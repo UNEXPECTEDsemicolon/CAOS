@@ -1,0 +1,8 @@
+echo -n 'The quick brown fox jumps over the lazy dog' | openssl enc -e -aes-256-cbc -salt -S 53616C7455736564 -k $KEY -iv $IV | hexdump -C
+*** WARNING : deprecated key derivation used.
+Using -iter or -pbkdf2 would be better.
+00000000  53 61 6c 74 65 64 5f 5f  53 61 6c 74 55 73 65 64  |Salted__SaltUsed|
+00000010  7b 6c d3 b9 69 2c 9c f4  87 a5 f0 3e ed ea 95 91  |{l..i,.....>....|
+00000020  47 e3 42 30 80 f7 ea bc  a9 f5 ae 1f 11 3c f1 9c  |G.B0.........<..|
+00000030  87 92 16 9a ee 9f 1d a9  36 aa 2c 9a d2 2b 4e d5  |........6.,..+N.|
+00000040

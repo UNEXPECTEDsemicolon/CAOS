@@ -1,0 +1,1 @@
+/usr/bin/cc   -rdynamic "CMakeFiles/\$PROJECT_NAME,.dir/2.1.o"  -o "\$PROJECT_NAME," 

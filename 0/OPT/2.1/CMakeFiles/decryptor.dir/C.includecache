@@ -1,0 +1,22 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/home/belov/caos/Homework/I/OPT/2.1/2.1.c
+stdio.h
+-
+stdlib.h
+-
+openssl/aes.h
+-
+openssl/evp.h
+-
+openssl/err.h
+-
+string.h
+-
+

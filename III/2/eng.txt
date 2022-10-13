@@ -1,0 +1,12 @@
+b 24
+r
+10. paper
+9. Compass
+8. Refrigiration
+7. The priniting Press
+6. Plumbing
+5. Medicine
+4. Engine
+3. Wheel
+2. Comminication
+1. Electricitic
