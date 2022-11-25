@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
@@ -5,14 +6,13 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include <unistd.h>
-#include <bits/posix1_lim.h>
-#include <libgen.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <linux/limits.h>
 #include <fcntl.h>
 #include <dirent.h>
 #include <strings.h>
+#include <limits.h>
 
 #define FUSE_USE_VERSION 30 // API version 3.0
 #include <fuse.h>
@@ -38,8 +38,8 @@ typedef struct vector
         (this).cap *= 2;                                                             \
         if (NULL == ((this).data = realloc((this).data, (this).cap * sizeof(type)))) \
         {                                                                            \
-            perror("Can't realloc array of filenames");                              \
-            /*safe_exit(1);*/                                                        \
+            perror("Can't realloc array");                                           \
+            exit(1);                                                                 \
         }                                                                            \
     }                                                                                \
     memcpy(((type *)((this).data)) + (this).size++, &(elem), sizeof(type))
@@ -63,13 +63,23 @@ Node root = {.path = ""};
 
 Node *find(Node* node, const char *path)
 {
-    const char *filename = max(path, rindex(path, '/') + 1);
+    if (!strcmp(path, "."))
+        return node;
+    if (!strcmp(path, ".."))
+        return node->parent;
+    if (node == &root && !strcmp(path, "/"))
+        return node;
     for (size_t i = 0; i < node->childs.size; ++i)
     {
         Node *cur_node = &vector_at(node->childs, i, Node);
-        char *cur_node_name = max(node->path, rindex(path, '/') + 1);
-        if (strncmp(filename, cur_node_name, NAME_MAX) == 0)
+        if (!strcmp(path, cur_node->path))
             return cur_node;
+        if (!strncmp(path, cur_node->path, strlen(cur_node->path)))
+        {
+            Node* res = find(cur_node, path);
+            if (res)
+                return res;
+        }
     }
     return NULL;
 }
@@ -87,10 +97,13 @@ int merge(Node *parent, const char *real_path, struct stat *file_stat, bool expa
         return -1;
     }
 
-    Node *old = find(parent, real_path);
+    char local_path[PATH_MAX] = {};
+    path_join(parent->path, basename(real_path), local_path);
+    Node *old = find(parent, local_path);
     if (old && !S_ISDIR(file_stat->st_mode) && (file_stat->st_mtime > old->file_stat.st_mtime))
     {
         old->file_stat = *file_stat;
+        strcpy(old->real_path, real_path);
     }
     else
     {
@@ -100,10 +113,6 @@ int merge(Node *parent, const char *real_path, struct stat *file_stat, bool expa
                 old = parent;
             else
             {
-                char local_path[PATH_MAX] = {};
-                char temp[PATH_MAX] = {};
-                strncpy(temp, real_path, PATH_MAX);
-                path_join(parent->path, basename(temp), local_path);
                 Node new_node = {.parent = parent, .file_stat = *file_stat};
                 strncpy(new_node.path, local_path, PATH_MAX);
                 strncpy(new_node.real_path, real_path, PATH_MAX);
@@ -114,7 +123,12 @@ int merge(Node *parent, const char *real_path, struct stat *file_stat, bool expa
         }
         if (S_ISDIR(file_stat->st_mode))
         {
-            DIR *dir = opendir(real_path); //TODO: error handling
+            DIR *dir = opendir(real_path);
+            if (!dir)
+            {
+                perror("Can't open directory");
+                return -1;
+            }
             errno = 0;
             struct dirent *dir_info;
             while ((dir_info = readdir(dir)))
@@ -126,7 +140,6 @@ int merge(Node *parent, const char *real_path, struct stat *file_stat, bool expa
                 struct stat st;
                 stat(child_path, &st);
                 merge(old, child_path, &st, true);
-                // printf("%s: %s\n", path, dir_info->d_name);
             }
             if (errno)
             {
@@ -139,16 +152,9 @@ int merge(Node *parent, const char *real_path, struct stat *file_stat, bool expa
     return 0;
 }
 
-// #define safe_exit(return_code)      \
-//     vector_delete(files, FileInfo); \
-//     fclose(file);                   \
-//     exit(return_code)
-
-
-
-int my_stat(const char *path/*check if absolute*/, struct stat *st, struct fuse_file_info *fi)
+int my_stat(const char *path, struct stat *st, struct fuse_file_info *fi)
 {
-    Node *node = find(&root, path, false);
+    Node *node = find(&root, path);
     if (NULL == node)
     {
         return -ENOENT;
@@ -161,7 +167,7 @@ int my_stat(const char *path/*check if absolute*/, struct stat *st, struct fuse_
 int my_readdir(const char *path, void *out, fuse_fill_dir_t filler, off_t off,
                struct fuse_file_info *fi, enum fuse_readdir_flags flags)
 {
-    Node *node = find(&root, path, false);
+    Node *node = find(&root, path);
     if (NULL == node || !S_ISDIR(node->file_stat.st_mode))
     {
         return -ENOENT;
@@ -172,7 +178,8 @@ int my_readdir(const char *path, void *out, fuse_fill_dir_t filler, off_t off,
 
     for (size_t i = 0; i < node->childs.size; ++i)
     {
-        filler(out, basename(vector_at(node->childs, i, Node).path), NULL, 0, 0);
+        Node* child = &vector_at(node->childs, i, Node);
+        filler(out, basename(child->path), &(child->file_stat), 0, 0);
     }
 
     return 0;
@@ -188,18 +195,23 @@ vector opened_files;
 
 int my_open(const char *path, struct fuse_file_info *fi)
 {
-    Node *node = find(&root, path, false);
+    Node *node = find(&root, path);
     if (NULL == node || S_ISDIR(node->file_stat.st_mode))
     {
         return -ENOENT;
     }
 
-    if (O_RDONLY != (fi->flags & O_ACCMODE) || (node->file_stat.st_mode & S_IRUSR))
+    if (O_RDONLY != (fi->flags & O_ACCMODE) || !(node->file_stat.st_mode & S_IRUSR))
     {
         return -EACCES;
     }
     OpenedFile new_file;
-    new_file.fd = open(node->real_path, O_RDONLY);
+    if (-1 == (new_file.fd = open(node->real_path, O_RDONLY)))
+    {
+        int res = -errno;
+        perror("Can't open");
+        return res;
+    }
     new_file.file_stat = &(node->file_stat);
     vector_push_back(opened_files, new_file, OpenedFile);
     fi->fh = (uint64_t)(&vector_back(opened_files, OpenedFile));
@@ -218,13 +230,15 @@ int my_read(const char *path, char *out, size_t size, off_t off,
 
     if (-1 == lseek(cur_file->fd, off, SEEK_SET))
     {
+        int res = -errno;
         perror("lseek error");
-        return -errno;
+        return res;
     }
     if (-1 == read(cur_file->fd, out, size))
     {
+        int res = -errno;
         perror("Can't read file");
-        return -errno;
+        return res;
     }
 
     return size;
@@ -243,10 +257,17 @@ struct fuse_operations operations = {
     .release = my_close,
 };
 
+void delete_nodes(Node *node)
+{
+    for (size_t i = 0; i < node->childs.size; ++i)
+    {
+        delete_nodes(&vector_at(node->childs, i, Node));
+    }
+    vector_delete(node->childs, Node);
+}
+
 void open_filesystem(char* src)
 {
-    char src_backup[PATH_MAX * 10];
-    strcpy(src_backup, src);
     root.parent = &root;
     vector_init(root.childs, 0, Node);
     root.file_stat.st_mode = 0555 | S_IFDIR;
@@ -254,24 +275,32 @@ void open_filesystem(char* src)
 
     vector_init(opened_files, 0, OpenedFile);
 
-    char *begin = src_backup;
+    char *begin = src;
     char *end = begin + strlen(begin);
-    char *sep = strstr(begin, ":");
+    char *sep = strchr(begin, ':');
     if (!sep)
         sep = end;
     while (begin != end)
     {
         *sep = '\0';
         struct stat st;
-        if (-1 == stat(begin, &st))
+        char abs_begin[PATH_MAX];
+        realpath(begin, abs_begin);
+        if (-1 == stat(abs_begin, &st))
         {
-            //error
+            perror("stat");
+            delete_nodes(&root);
+            exit(1);
         }
-        merge(&root, begin, &st, false);
+        if (-1 == merge(&root, abs_begin, &st, false))
+        {
+            delete_nodes(&root);
+            exit(1);
+        }
         if (sep == end)
             break;
         begin = sep + 1;
-        sep = strstr(begin, ":");
+        sep = strchr(begin, ':');
         if (!sep)
             sep = end;
     }
@@ -302,10 +331,8 @@ int main(int argc, char *argv[])
 
     int ret = fuse_main(args.argc, args.argv, &operations, NULL);
 
-    vector_delete(root.childs, Node);
+    delete_nodes(&root);
     vector_delete(opened_files, OpenedFile);
-
-    // safe_exit(0);
 
     return ret;
 }

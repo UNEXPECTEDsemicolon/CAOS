@@ -1,0 +1,12 @@
+test.c: In function ‘main’:
+test.c:61:15: warning: passing argument 1 of ‘close_all’ from incompatible pointer type [-Wincompatible-pointer-types]
+   61 |     close_all(out_pipe_fds, argc - 1);
+      |               ^~~~~~~~~~~~
+      |               |
+      |               int (*)[2]
+test.c:10:27: note: expected ‘const int *’ but argument is of type ‘int (*)[2]’
+   10 | void close_all(const int *pipe_fds, size_t size)
+      |                ~~~~~~~~~~~^~~~~~~~
+test.c:63:5: error: expected expression before ‘for’
+   63 |     for (size_t i = argc; i > 0; --i)
+      |     ^~~

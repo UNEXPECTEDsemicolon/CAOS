@@ -25,7 +25,6 @@ static struct
 
 extern void myalloc_initialize(int fd)
 {
-    sizeof(BlockHeader);
     struct stat statbuf = {};
     if (-1 == fstat(fd, &statbuf))
     {

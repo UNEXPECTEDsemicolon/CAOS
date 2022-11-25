@@ -1,0 +1,2 @@
+GET /some_path/script.py?a=123&b=abrakadabra HTTP/1.1
+Host: www.example.com

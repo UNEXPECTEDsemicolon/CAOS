@@ -33,3 +33,11 @@ extern void normalize_path(char *path)
     }
     *++ptr_write = '\0';
 }
+
+#include <stdio.h>
+int main()
+{
+    char path[20] = "./////a";
+    normalize_path(path);
+    printf("%s\n", path);
+}

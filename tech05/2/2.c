@@ -9,7 +9,7 @@
 
 int main(int argc, char **argv)
 {
-    if (argc < 3)
+    if (argc < 4)
     {
         perror("Invalid arguments");
         exit(1);
@@ -19,6 +19,7 @@ int main(int argc, char **argv)
     if (-1 == fd)
     {
         perror("Can't open file");
+        close(fd);
         exit(1);
     }
 
@@ -30,11 +31,15 @@ int main(int argc, char **argv)
     if (-1 == ftruncate(fd, filesize))
     {
         perror("Can't set file size");
+        close(fd);
         exit(1);
     }
 
     if (filesize == 0)
+    {
+        close(fd);
         exit(0);
+    }
 
     char *mem = mmap(NULL,
                      filesize,

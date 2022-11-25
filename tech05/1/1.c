@@ -37,10 +37,14 @@ int main(int argc, char **argv)
 
     size_t filesize = statbuf.st_size;
     if (filesize == 0)
+    {
+        close(fd);
         exit(0);
+    }
     if (filesize % sizeof(Item) != 0)
     {
         perror("Wrong data");
+        close(fd);
         exit(1);
     }
 
